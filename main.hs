@@ -44,7 +44,7 @@ run (inst:code, stack, state) = case inst of
   Fals -> run (code, BoolVal False : stack, state)
   Equ -> comparisonOp (\x y -> BoolVal (x == y))
   Le -> comparisonOp (\x y -> BoolVal (x <= y))
-  And -> binaryOpBool (\(BoolVal x) (BoolVal y) -> BoolVal (x && y))
+  And -> binaryOpBool (\x y -> BoolVal (x && y))
   Neg -> unaryOpBool (\(BoolVal x) -> BoolVal (not x))
   Fetch var -> run (code, val : stack, state) where val = fromMaybe (error "Run-time error") (lookup var state)
   Store var -> run (code, stack', state') where
@@ -58,7 +58,8 @@ run (inst:code, stack, state) = case inst of
       (x, y, stack') -> run (code, op x y : stack', state)
 
     binaryOpBool op = case pop2 stack of
-      (x, y, stack') -> run (code, op x y : stack', state)
+      (BoolVal x, BoolVal y, stack') -> run (code, op x y : stack', state)
+      _ -> error "Run-time error"
 
     comparisonOp op = case pop2 stack of
       (IntVal x, IntVal y, stack') -> run (code, op x y : stack', state)
