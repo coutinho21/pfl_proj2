@@ -11,8 +11,9 @@ data Inst =
   Branch Code Code | Loop Code Code
   deriving Show
 type Code = [Inst]
-type Stack = [Integer]
-type State = [(String, Integer)]
+data StackVal = IntVal Integer | BoolVal Bool deriving Show
+type Stack = [StackVal]
+type State = [(String, StackVal)]
 
 createEmptyStack :: Stack
 createEmptyStack = []
@@ -21,47 +22,34 @@ createEmptyState :: State
 createEmptyState = []
 
 stack2Str :: Stack -> String
-stack2Str stack = intercalate "," (map showBool (stack))
+stack2Str stack = intercalate "," (map showVal stack)
   where
-    showBool 1 = "True"
-    showBool 0 = "False"
-    showBool n = show n
+    showVal (IntVal n) = show n
+    showVal (BoolVal b) = show b
 
 state2Str :: State -> String
-state2Str state = intercalate "," [var ++ "=" ++ showBool val | (var, val) <- sortOn fst state]
+state2Str state = intercalate "," [var ++ "=" ++ showVal val | (var, val) <- sortOn fst state]
   where
-    showBool 0 = "False"
-    showBool 1 = "True"
-    showBool n = show n
+    showVal (IntVal n) = show n
+    showVal (BoolVal b) = show b
 
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
 run (inst:code, stack, state) = case inst of
-  Push n -> run (code, n : stack, state)
-  Add -> binaryOp (+)
-  Mult -> binaryOp (*)
-  Sub -> binaryOp (-)
-  Tru -> run (code, 1 : stack, state)
-  Fals -> run (code, 0 : stack, state)
-  Equ -> comparisonOp (==)
-  Le -> comparisonOp (<=)
-  And -> binaryOp (\x y -> if x `elem` [0, 1] && y `elem` [0, 1] then
-                            if x /= 0 && y /= 0 then 1 else 0
-                          else
-                            error "Run-time error")
-
-  
-  Neg -> unaryOp (\x -> if x `elem` [0, 1] then 
-                        if x == 0 then 1 else 0
-                      else
-                        error "Run-time error")
-
-
+  Push n -> run (code, IntVal n : stack, state)
+  Add -> binaryOp (\(IntVal x) (IntVal y) -> IntVal (x + y))
+  Mult -> binaryOp (\(IntVal x) (IntVal y) -> IntVal (x * y))
+  Sub -> binaryOp (\(IntVal x) (IntVal y) -> IntVal (x - y))
+  Tru -> run (code, BoolVal True : stack, state)
+  Fals -> run (code, BoolVal False : stack, state)
+  Equ -> comparisonOp (\x y -> BoolVal (x == y))
+  Le -> comparisonOp (\x y -> BoolVal (x <= y))
+  And -> binaryOpBool (\(BoolVal x) (BoolVal y) -> BoolVal (x && y))
+  Neg -> unaryOpBool (\(BoolVal x) -> BoolVal (not x))
   Fetch var -> run (code, val : stack, state) where val = fromMaybe (error "Run-time error") (lookup var state)
   Store var -> run (code, stack', state') where
     (val, stack') = pop stack  
     state' = (var, val) : filter ((/= var) . fst) state 
-   
   Noop -> (code, stack, state)
   Branch c1 c2 -> branchOp c1 c2
   Loop c1 c2 -> loopOp c1 c2
@@ -69,18 +57,25 @@ run (inst:code, stack, state) = case inst of
     binaryOp op = case pop2 stack of
       (x, y, stack') -> run (code, op x y : stack', state)
 
-    comparisonOp op = case pop2 stack of
-      (x, y, stack') -> run (code, if op x y then 1 : stack' else 0 : stack', state)
+    binaryOpBool op = case pop2 stack of
+      (x, y, stack') -> run (code, op x y : stack', state)
 
-    unaryOp op = case pop stack of
+    comparisonOp op = case pop2 stack of
+      (IntVal x, IntVal y, stack') -> run (code, op x y : stack', state)
+      (BoolVal x, BoolVal y, stack') -> run (code, BoolVal (x == y) : stack', state)
+      _ -> error "Run-time error"
+
+    unaryOpBool op = case pop stack of
       (x, stack') -> run (code, op x : stack', state)
 
     branchOp c1 c2 = case pop stack of
-      (x, stack') -> if x /= 0 then run (c1 ++ code, stack', state) else run (c2 ++ code, stack', state)
+      (BoolVal x, stack') -> if x then run (c1 ++ code, stack', state) else run (c2 ++ code, stack', state)
+      _ -> error "Run-time error"
 
     loopOp c1 c2 = case run (c1, stack, state) of
       ([], stack', state') -> case pop stack' of
-        (x, stack'') -> if x /= 0 then run (c2 ++ [Loop c1 c2], stack'', state') else run (code, stack'', state')
+        (BoolVal x, stack'') -> if x then run (c2 ++ [Loop c1 c2], stack'', state') else run (code, stack'', state')
+        _ -> error "Run-time error"
       (c1', stack', state') -> run (c1' ++ [Loop c1 c2], stack', state')
 
     pop :: [a] -> (a, [a])
