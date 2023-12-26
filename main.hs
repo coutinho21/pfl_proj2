@@ -2,6 +2,7 @@
 -- Updated on 15/12/2023
 import Data.List
 import Data.Maybe
+import Control.Exception
 -- Part 1
 
 -- Do not modify our definition of Inst and Code
@@ -20,10 +21,18 @@ createEmptyState :: State
 createEmptyState = []
 
 stack2Str :: Stack -> String
-stack2Str stack = intercalate "," (map show (reverse stack))
+stack2Str stack = intercalate "," (map showBool (stack))
+  where
+    showBool 1 = "True"
+    showBool 0 = "False"
+    showBool n = show n
 
 state2Str :: State -> String
-state2Str state = intercalate "," [var ++ "=" ++ show val | (var, val) <- sortOn fst state]
+state2Str state = intercalate "," [var ++ "=" ++ showBool val | (var, val) <- sortOn fst state]
+  where
+    showBool 0 = "False"
+    showBool 1 = "True"
+    showBool n = show n
 
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
@@ -39,7 +48,10 @@ run (inst:code, stack, state) = case inst of
   And -> binaryOp (\x y -> if x /= 0 && y /= 0 then 1 else 0)
   Neg -> unaryOp (\x -> if x == 0 then 1 else 0)
   Fetch var -> run (code, val : stack, state) where val = fromMaybe (error "Run-time error") (lookup var state)
-  Store var -> run (code, stack', state') where (val, stack') = pop stack; state' = (var, val) : state
+  Store var -> run (code, stack', state') where
+    (val, stack') = pop stack  
+    state' = (var, val) : filter ((/= var) . fst) state 
+   
   Noop -> (code, stack, state)
   Branch c1 c2 -> branchOp c1 c2
   Loop c1 c2 -> loopOp c1 c2
@@ -81,13 +93,38 @@ testAssembler code = (stack2Str stack, state2Str state)
 -- testAssembler [Push (-20),Tru,Tru,Neg,Equ] == ("False,-20","")
 -- testAssembler [Push (-20),Push (-21), Le] == ("True","")
 -- testAssembler [Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"] == ("","x=4")
--- testAssembler [Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg] [Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]] == ("","fact=3628800,i=1")
+-- testAssembler [Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg][Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]] == ("","fact=3628800,i=1")
 -- If you test:
 -- testAssembler [Push 1,Push 2,And]
 -- You should get an exception with the string: "Run-time error"
 -- If you test:
 -- testAssembler [Tru,Tru,Store "y", Fetch "x",Tru]
 -- You should get an exception with the string: "Run-time error"
+
+
+test :: (Code, (String, String)) -> IO String
+test (code, expected) = 
+  catch 
+    (do
+      let result = testAssembler code
+      return $ if result == expected then "True" else "False")
+    handler
+  where
+    handler :: SomeException -> IO String
+    handler _ = return "Error"
+
+testAll :: IO [String]
+testAll = mapM test
+  [ ([Push 10,Push 4,Push 3,Sub,Mult], ("-10",""))
+  , ([Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"], ("","a=3,someVar=False,var=True"))
+  , ([Fals,Store "var",Fetch "var"], ("False","var=False"))
+  , ([Push (-20),Tru,Fals], ("False,True,-20",""))
+  , ([Push (-20),Tru,Tru,Neg], ("False,True,-20",""))
+  , ([Push (-20),Tru,Tru,Neg,Equ], ("False,-20",""))
+  , ([Push (-20),Push (-21), Le], ("True",""))
+  , ([Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"], ("","x=4"))
+  , ([Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg][Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]], ("","fact=3628800,i=1"))
+  ]
 
 
 
