@@ -45,8 +45,18 @@ run (inst:code, stack, state) = case inst of
   Fals -> run (code, 0 : stack, state)
   Equ -> comparisonOp (==)
   Le -> comparisonOp (<=)
-  And -> binaryOp (\x y -> if x /= 0 && y /= 0 then 1 else 0)
-  Neg -> unaryOp (\x -> if x == 0 then 1 else 0)
+  And -> binaryOp (\x y -> if x `elem` [0, 1] && y `elem` [0, 1] then
+                            if x /= 0 && y /= 0 then 1 else 0
+                          else
+                            error "Run-time error")
+
+  
+  Neg -> unaryOp (\x -> if x `elem` [0, 1] then 
+                        if x == 0 then 1 else 0
+                      else
+                        error "Run-time error")
+
+
   Fetch var -> run (code, val : stack, state) where val = fromMaybe (error "Run-time error") (lookup var state)
   Store var -> run (code, stack', state') where
     (val, stack') = pop stack  
@@ -68,7 +78,10 @@ run (inst:code, stack, state) = case inst of
     branchOp c1 c2 = case pop stack of
       (x, stack') -> if x /= 0 then run (c1 ++ code, stack', state) else run (c2 ++ code, stack', state)
 
-    loopOp c1 c2 = run (Branch (c1 ++ [Loop c1 c2, Noop]) [Noop] : code, stack, state)
+    loopOp c1 c2 = case run (c1, stack, state) of
+      ([], stack', state') -> case pop stack' of
+        (x, stack'') -> if x /= 0 then run (c2 ++ [Loop c1 c2], stack'', state') else run (code, stack'', state')
+      (c1', stack', state') -> run (c1' ++ [Loop c1 c2], stack', state')
 
     pop :: [a] -> (a, [a])
     pop [] = error "Run-time error"
@@ -84,22 +97,7 @@ testAssembler :: Code -> (String, String)
 testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
--- Examples:
--- testAssembler [Push 10,Push 4,Push 3,Sub,Mult] == ("-10","")
--- testAssembler [Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"] == ("","a=3,someVar=False,var=True")
--- testAssembler [Fals,Store "var",Fetch "var"] == ("False","var=False")
--- testAssembler [Push (-20),Tru,Fals] == ("False,True,-20","")
--- testAssembler [Push (-20),Tru,Tru,Neg] == ("False,True,-20","")
--- testAssembler [Push (-20),Tru,Tru,Neg,Equ] == ("False,-20","")
--- testAssembler [Push (-20),Push (-21), Le] == ("True","")
--- testAssembler [Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"] == ("","x=4")
--- testAssembler [Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg][Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]] == ("","fact=3628800,i=1")
--- If you test:
--- testAssembler [Push 1,Push 2,And]
--- You should get an exception with the string: "Run-time error"
--- If you test:
--- testAssembler [Tru,Tru,Store "y", Fetch "x",Tru]
--- You should get an exception with the string: "Run-time error"
+
 
 
 test :: (Code, (String, String)) -> IO String
@@ -127,10 +125,22 @@ testAll = mapM test
   ]
 
 
-
-
-
-
+-- Examples:
+-- testAssembler [Push 10,Push 4,Push 3,Sub,Mult] == ("-10","")
+-- testAssembler [Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"] == ("","a=3,someVar=False,var=True")
+-- testAssembler [Fals,Store "var",Fetch "var"] == ("False","var=False")
+-- testAssembler [Push (-20),Tru,Fals] == ("False,True,-20","")
+-- testAssembler [Push (-20),Tru,Tru,Neg] == ("False,True,-20","")
+-- testAssembler [Push (-20),Tru,Tru,Neg,Equ] == ("False,-20","")
+-- testAssembler [Push (-20),Push (-21), Le] == ("True","")
+-- testAssembler [Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"] == ("","x=4")
+-- testAssembler [Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg][Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]] == ("","fact=3628800,i=1")
+-- If you test:
+-- testAssembler [Push 1,Push 2,And]
+-- You should get an exception with the string: "Run-time error"
+-- If you test:
+-- testAssembler [Tru,Tru,Store "y", Fetch "x",Tru]
+-- You should get an exception with the string: "Run-time error"
 
 
 
