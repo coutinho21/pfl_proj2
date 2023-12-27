@@ -353,6 +353,12 @@ testAll2 = mapM test2
   , ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;", ("","x=2,z=4"))
   , ("x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;)", ("","x=1")) 
   , ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;", ("","x=2"))   
-  , ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("","x=2,y=-10,z=6"))   --da erro
-  , ("if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;", ("","y=2")) --da erro
+  , ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("","x=2,y=-10,z=6"))   
+  , ("if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;", ("","y=2")) -- daqui para baixo são testes novos
+  , ("x := 5; y := x * 2; z := y + 3;", ("","x=5,y=10,z=13"))
+  , ("x := 7; if x <= 5 then y := 1; else y := 2;", ("","x=7,y=2"))
+  , ("x := 3; while (x <= 5) do x := x + 1;", ("","x=6"))
+  , ("x := 10; y := x * 2; z := y - 1;", ("","x=10,y=20,z=19"))
+  , ("x := 2; y := 3; if x <= y then z := 1; else z := 2;", ("","x=2,y=3,z=1"))
+  , ("x := 5; y := x * x; z := y + y;", ("","x=5,y=25,z=50"))
   ]
