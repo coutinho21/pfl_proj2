@@ -5,7 +5,6 @@ import Data.Maybe
 import Control.Exception
 import Text.Read (readMaybe)
 import Data.List.Split (splitOn)
-import Data.List (intercalate)
 
 -- Part 1
 
@@ -52,8 +51,8 @@ run (inst:code, stack, state) = case inst of
   Neg -> unaryOpBool (\(BoolVal x) -> BoolVal (not x))
   Fetch var -> run (code, val : stack, state) where val = fromMaybe (error "Run-time error") (lookup var state)
   Store var -> run (code, stack', state') where
-    (val, stack') = pop stack  
-    state' = (var, val) : filter ((/= var) . fst) state 
+    (val, stack') = pop stack
+    state' = (var, val) : filter ((/= var) . fst) state
   Noop -> (code, stack, state)
   Branch c1 c2 -> branchOp c1 c2
   Loop c1 c2 -> loopOp c1 c2
@@ -95,14 +94,14 @@ run (inst:code, stack, state) = case inst of
 -- To help you test your assembler
 testAssembler :: Code -> (String, String)
 testAssembler code = (stack2Str stack, state2Str state)
-  where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
+  where (_,stack,state) = run (code, createEmptyStack, createEmptyState)
 
 
 
 
 test :: (Code, (String, String)) -> IO String
-test (code, expected) = 
-  catch 
+test (code, expected) =
+  catch
     (do
       let result = testAssembler code
       return $ if result == expected then "True" else "False")
@@ -121,26 +120,8 @@ testAll = mapM test
   , ([Push (-20),Tru,Tru,Neg,Equ], ("False,-20",""))
   , ([Push (-20),Push (-21), Le], ("True",""))
   , ([Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"], ("","x=4"))
-  , ([Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg][Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]], ("","fact=3628800,i=1"))
+  , ([Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg] [Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]], ("","fact=3628800,i=1"))
   ]
-
-
--- Examples:
--- testAssembler [Push 10,Push 4,Push 3,Sub,Mult] == ("-10","")
--- testAssembler [Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"] == ("","a=3,someVar=False,var=True")
--- testAssembler [Fals,Store "var",Fetch "var"] == ("False","var=False")
--- testAssembler [Push (-20),Tru,Fals] == ("False,True,-20","")
--- testAssembler [Push (-20),Tru,Tru,Neg] == ("False,True,-20","")
--- testAssembler [Push (-20),Tru,Tru,Neg,Equ] == ("False,-20","")
--- testAssembler [Push (-20),Push (-21), Le] == ("True","")
--- testAssembler [Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"] == ("","x=4")
--- testAssembler [Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg][Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]] == ("","fact=3628800,i=1")
--- If you test:
--- testAssembler [Push 1,Push 2,And]
--- You should get an exception with the string: "Run-time error"
--- If you test:
--- testAssembler [Tru,Tru,Store "y", Fetch "x",Tru]
--- You should get an exception with the string: "Run-time error"
 
 
 
@@ -187,7 +168,7 @@ compA (BinaryOp op a1 a2) = case op of
   _ -> compA a1 ++ compA a2 ++ case op of
     "+" -> [Add]
     "*" -> [Mult]
-  
+
 compB :: Bexp -> Code
 compB BTrue = [Push 1]
 compB BFalse = [Push 0]
@@ -201,18 +182,15 @@ compile [] = []
 compile ((Assign x a):ss) = compA a ++ [Store x] ++ compile ss
 compile ((Seq ss):ss') = compile ss ++ compile ss'
 compile ((If b s1 s2):ss) = compB b ++ [Branch (compile [s1]) (compile [s2])] ++ compile ss
-compile ((While b s):ss) = [Loop (compB b) (compile [s])] ++ compile ss
+compile ((While b s):ss) = Loop (compB b) (compile [s]) : compile ss
 compile ((Compound s1 s2):ss) = compile [s1] ++ compile [s2] ++ compile ss
 
 
 type Token = String
 
-
-
-
 tokenize :: String -> [Token]
 tokenize = words . concatMap spaceOut . replaceAll
-  where 
+  where
     spaceOut c = if c `elem` "();+-*/"
                   then [' ', c, ' ']
                   else [c]
@@ -220,67 +198,73 @@ tokenize = words . concatMap spaceOut . replaceAll
     replace old new = intercalate new . splitOn old
 
 parseAexp :: [Token] -> (Aexp, [Token])
-parseAexp (t:ts) 
+parseAexp (t:ts)
   | Just n <- readMaybe t = (IntConst n, ts)
-  | t == "(" = 
+  | t == "(" =
       let (a, ts') = parseUntilClosingParen ts
       in case ts' of
-          (op:ts'') | op `elem` ["+", "-", "*", "/"] -> 
+          (op:ts'') | op `elem` ["+", "-", "*", "/"] ->
             let (a2, ts''') = parseAexp ts''
             in (BinaryOp op a a2, ts''')
           _ -> (a, ts')
   | otherwise = case ts of
-      (op:ts') | op `elem` ["+", "-", "*", "/"] -> 
+      (op:ts') | op `elem` ["+", "-", "*", "/"] ->
         let (a2, ts'') = parseAexp ts'
         in (BinaryOp op (Var t) a2, ts'')
       _ -> (Var t, ts)
 
 parseUntilClosingParen :: [Token] -> (Aexp, [Token])
-parseUntilClosingParen tokens = 
+parseUntilClosingParen tokens =
   let (a, ts) = parseAexp tokens
   in case ts of
       (")":ts') -> (a, ts')
-      (op:ts') | op `elem` ["+", "-", "*", "/"] -> 
+      (op:ts') | op `elem` ["+", "-", "*", "/"] ->
         let (a2, ts'') = parseUntilClosingParen ts'
         in (BinaryOp op a a2, ts'')
       _ -> error "Missing closing parenthesis"
 
 parseBexp :: [Token] -> (Bexp, [Token])
-parseBexp ("not":ts) = let (b, ts') = parseBexp ts in (Not b, ts')
-parseBexp ("(":ts) = 
+parseBexp ("not":ts) =
+  let (b, ts') = parseBexp ts
+  in (Not b, ts')
+parseBexp ("(":ts) =
   let (b, ")":ts') = parseBexp ts
   in (b, ts')
-parseBexp ts = 
+parseBexp ts =
   let (a1, op:ts') = parseAexp ts
       (a2, ts'') = parseAexp ts'
   in case op of
        "==" -> (Eq a1 a2, ts'')
        "<=" -> (Leq a1 a2, ts'')
+       "and" -> 
+                let (b1, ts''') = parseBexp ts''
+                    (b2, ts'''') = parseBexp ts'''
+                in (And2 b1 b2, ts''')
        _ -> error $ "Unknown operator: " ++ op
-            
+
 
 parseStm :: [Token] -> (Stm, [Token])
 parseStm [] = error "Unexpected end of input"
-parseStm ("(":ts) = 
+parseStm ("(":ts) =
   let (s, ts') = parseStm ts
   in case ts' of
        (";":ts'') -> let (s', ";":ts''') = parseStm ts''
                      in case ts''' of
-                          (")":ts'''') -> ((Compound s s'), ts'''')
+                          (")":ts'''') -> (Compound s s', ts'''')
                           _ -> error $ "Expected ')', got: " ++ show ts'''
        _ -> error $ "Expected ';', got: " ++ show ts'
 
-parseStm (t:":=":ts) = 
+parseStm (t:":=":ts) =
   let (a, ts') = parseAexp ts
   in (Assign t a, ts')
-parseStm ("if":ts) = 
+parseStm ("if":ts) =
   let (b, "then":ts') = parseBexp ts
       (s1, ";":ts'') = parseStm ts'
   in case ts'' of
        ("else":ts''') -> let (s2, ts'''') = parseStm ts'''
                          in (If b s1 s2, ts'''')
        _ -> error $ "Expected 'else', got: " ++ show ts''
-parseStm ("while":ts) = 
+parseStm ("while":ts) =
   let (b, ts') = parseBexp ts
   in case dropWhile (/= "do") ts' of
        ("do":ts'') -> let (s, ts''') = parseStm ts''
@@ -290,7 +274,7 @@ parseStm ts = error $ "Unexpected tokens: " ++ show ts
 
 parseProgram :: [Token] -> Program
 parseProgram [] = []
-parseProgram ts = 
+parseProgram ts =
   let (s, ts') = parseStm ts
       ts'' = case ts' of
         (";":rest) -> rest
@@ -303,21 +287,11 @@ parse = parseProgram . tokenize
 -- -- To help you test your parser
 testParser :: String -> (String, String)
 testParser programCode = (stack2Str stack, state2Str state)
-   where (_,stack,state) = run(compile (parse programCode), createEmptyStack, createEmptyState)
-
--- -- Examples:
--- -- testParser "x := 5; x := x - 1;" == ("","x=4")
--- -- testParser "if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;" == ("","y=2")
--- -- testParser "x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;)" == ("","x=1")
--- -- testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;" == ("","x=2")
--- -- testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;" == ("","x=2,z=4")
--- -- testParser "x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);" == ("","x=2,y=-10,z=6")
--- -- testParser "i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);" == ("","fact=3628800,i=1")
-
+   where (_,stack,state) = run (compile (parse programCode), createEmptyStack, createEmptyState)
 
 test2 :: (String, (String, String)) -> IO String
-test2 (code, expected) = 
-  catch 
+test2 (code, expected) =
+  catch
     (do
       let result = testParser code
       return $ if result == expected then "True" else "False")
@@ -331,8 +305,8 @@ testAll2 = mapM test2
   [ ("x := 5; x := x - 1;", ("","x=4"))
   , ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("","fact=3628800,i=1"))
   , ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;", ("","x=2,z=4"))
-  , ("x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;)", ("","x=1")) 
-  , ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;", ("","x=2"))   
-  , ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("","x=2,y=-10,z=6"))   --da erro
+  , ("x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;)", ("","x=1"))
+  , ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;", ("","x=2"))
+  , ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("","x=2,y=-10,z=6"))
   , ("if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;", ("","y=2")) --da erro
   ]
