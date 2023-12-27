@@ -4,8 +4,8 @@ import Data.List
 import Data.Maybe
 import Control.Exception
 import Text.Read (readMaybe)
-import Data.List.Split (splitOn)
 import Data.List (intercalate)
+
 
 -- Part 1
 
@@ -98,8 +98,6 @@ testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
 
-
-
 test :: (Code, (String, String)) -> IO String
 test (code, expected) = 
   catch 
@@ -123,24 +121,6 @@ testAll = mapM test
   , ([Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"], ("","x=4"))
   , ([Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg][Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]], ("","fact=3628800,i=1"))
   ]
-
-
--- Examples:
--- testAssembler [Push 10,Push 4,Push 3,Sub,Mult] == ("-10","")
--- testAssembler [Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"] == ("","a=3,someVar=False,var=True")
--- testAssembler [Fals,Store "var",Fetch "var"] == ("False","var=False")
--- testAssembler [Push (-20),Tru,Fals] == ("False,True,-20","")
--- testAssembler [Push (-20),Tru,Tru,Neg] == ("False,True,-20","")
--- testAssembler [Push (-20),Tru,Tru,Neg,Equ] == ("False,-20","")
--- testAssembler [Push (-20),Push (-21), Le] == ("True","")
--- testAssembler [Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"] == ("","x=4")
--- testAssembler [Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg][Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]] == ("","fact=3628800,i=1")
--- If you test:
--- testAssembler [Push 1,Push 2,And]
--- You should get an exception with the string: "Run-time error"
--- If you test:
--- testAssembler [Tru,Tru,Store "y", Fetch "x",Tru]
--- You should get an exception with the string: "Run-time error"
 
 
 
@@ -200,7 +180,11 @@ compile :: Program -> Code
 compile [] = []
 compile ((Assign x a):ss) = compA a ++ [Store x] ++ compile ss
 compile ((Seq ss):ss') = compile ss ++ compile ss'
-compile ((If b s1 s2):ss) = compB b ++ [Branch (compile [s1]) (compile [s2])] ++ compile ss
+compile ((If b s1 s2):ss) = 
+    let codeB = compB b
+        codeS1 = compile [s1]
+        codeS2 = compile [s2]
+    in codeB ++ [Branch codeS1 codeS2] ++ compile ss
 compile ((While b s):ss) = [Loop (compB b) (compile [s])] ++ compile ss
 compile ((Compound s1 s2):ss) = compile [s1] ++ compile [s2] ++ compile ss
 
@@ -208,16 +192,15 @@ compile ((Compound s1 s2):ss) = compile [s1] ++ compile [s2] ++ compile ss
 type Token = String
 
 
-
-
 tokenize :: String -> [Token]
 tokenize = words . concatMap spaceOut . replaceAll
-  where 
+  where
     spaceOut c = if c `elem` "();+-*/"
                   then [' ', c, ' ']
                   else [c]
     replaceAll = replace ":=" ":= " . replace "<=" "<= " . replace ">=" ">= " . replace "==" "== "
-    replace old new = intercalate new . splitOn old
+    replace old new = intercalate new . words
+
 parseAexp :: [Token] -> (Aexp, [Token])
 parseAexp (t:ts) 
   | Just n <- readMaybe t = (IntConst n, ts)
@@ -286,16 +269,6 @@ parse = parseProgram . tokenize
 testParser :: String -> (String, String)
 testParser programCode = (stack2Str stack, state2Str state)
    where (_,stack,state) = run(compile (parse programCode), createEmptyStack, createEmptyState)
-
--- -- Examples:
--- -- testParser "x := 5; x := x - 1;" == ("","x=4")
--- -- testParser "if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;" == ("","y=2")
--- -- testParser "x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;)" == ("","x=1")
--- -- testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;" == ("","x=2")
--- -- testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;" == ("","x=2,z=4")
--- -- testParser "x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);" == ("","x=2,y=-10,z=6")
--- -- testParser "i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);" == ("","fact=3628800,i=1")
-
 
 test2 :: (String, (String, String)) -> IO String
 test2 (code, expected) = 
