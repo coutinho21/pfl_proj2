@@ -162,6 +162,7 @@ data Bexp = BTrue
           | Leq Aexp Aexp
           | Not Bexp
           | And2 Bexp Bexp
+          | Beq Bexp Bexp
           deriving Show
 
 -- Statements
@@ -189,12 +190,14 @@ compA (BinaryOp op a1 a2) = case op of
     "*" -> [Mult]
   
 compB :: Bexp -> Code
-compB BTrue = [Push 1]
-compB BFalse = [Push 0]
+compB BTrue = [Tru]
+compB BFalse = [Fals]
 compB (Eq a1 a2) = compA a1 ++ compA a2 ++ [Equ]
 compB (Leq a1 a2) = compA a2 ++ compA a1 ++ [Le]
 compB (Not b) = compB b ++ [Neg]
 compB (And2 b1 b2) = compB b1 ++ compB b2 ++ [And]
+compB (Beq b1 b2) = compB b1 ++ compB b2 ++ [Equ]
+
 
 compile :: Program -> Code
 compile [] = []
@@ -245,19 +248,36 @@ parseUntilClosingParen tokens =
         in (BinaryOp op a a2, ts'')
       _ -> error "Missing closing parenthesis"
 
+
 parseBexp :: [Token] -> (Bexp, [Token])
-parseBexp ("not":ts) = let (b, ts') = parseBexp ts in (Not b, ts')
-parseBexp ("(":ts) = 
+parseBexp ts = 
+  let (b1, ts') = parseBexp1 ts
+  in case ts' of
+       "and":ts'' -> let (b2, ts''') = parseBexp ts'' in (And2 b1 b2, ts''')
+       _ -> (b1, ts')
+
+parseBexp1 :: [Token] -> (Bexp, [Token])
+parseBexp1 ts = 
+  let (b1, ts') = parseBexp2 ts
+  in case ts' of
+       "=":ts'' -> let (b2, ts''') = parseBexp1 ts'' in (Beq b1 b2, ts''')
+       _ -> (b1, ts')
+
+parseBexp2 :: [Token] -> (Bexp, [Token])
+parseBexp2 ("True":ts) = (BTrue, ts)
+parseBexp2 ("False":ts) = (BFalse, ts)
+parseBexp2 ("not":ts) = let (b, ts') = parseBexp2 ts in (Not b, ts')
+parseBexp2 ("(":ts) = 
   let (b, ")":ts') = parseBexp ts
   in (b, ts')
-parseBexp ts = 
+parseBexp2 ts = 
   let (a1, op:ts') = parseAexp ts
       (a2, ts'') = parseAexp ts'
   in case op of
        "==" -> (Eq a1 a2, ts'')
        "<=" -> (Leq a1 a2, ts'')
        _ -> error $ "Unknown operator: " ++ op
-            
+
 
 parseStm :: [Token] -> (Stm, [Token])
 parseStm [] = error "Unexpected end of input"
