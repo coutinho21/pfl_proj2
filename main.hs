@@ -218,14 +218,32 @@ tokenize = words . concatMap spaceOut . replaceAll
                   else [c]
     replaceAll = replace ":=" ":= " . replace "<=" "<= " . replace ">=" ">= " . replace "==" "== "
     replace old new = intercalate new . splitOn old
+
 parseAexp :: [Token] -> (Aexp, [Token])
 parseAexp (t:ts) 
   | Just n <- readMaybe t = (IntConst n, ts)
+  | t == "(" = 
+      let (a, ts') = parseUntilClosingParen ts
+      in case ts' of
+          (op:ts'') | op `elem` ["+", "-", "*", "/"] -> 
+            let (a2, ts''') = parseAexp ts''
+            in (BinaryOp op a a2, ts''')
+          _ -> (a, ts')
   | otherwise = case ts of
-      (op:a2:ts') | op `elem` ["+", "-", "*", "/"] -> 
-        let (a2', ts'') = parseAexp (a2:ts')
-        in (BinaryOp op (Var t) a2', ts'')
+      (op:ts') | op `elem` ["+", "-", "*", "/"] -> 
+        let (a2, ts'') = parseAexp ts'
+        in (BinaryOp op (Var t) a2, ts'')
       _ -> (Var t, ts)
+
+parseUntilClosingParen :: [Token] -> (Aexp, [Token])
+parseUntilClosingParen tokens = 
+  let (a, ts) = parseAexp tokens
+  in case ts of
+      (")":ts') -> (a, ts')
+      (op:ts') | op `elem` ["+", "-", "*", "/"] -> 
+        let (a2, ts'') = parseUntilClosingParen ts'
+        in (BinaryOp op a a2, ts'')
+      _ -> error "Missing closing parenthesis"
 
 parseBexp :: [Token] -> (Bexp, [Token])
 parseBexp ("not":ts) = let (b, ts') = parseBexp ts in (Not b, ts')
